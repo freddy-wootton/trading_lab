@@ -1,4 +1,4 @@
-python packages to install, run these commands in th terminal
+python packages to install, run these commands in the terminal
 
 python -m pip install alpaca-py
 python -m pip install pandas
