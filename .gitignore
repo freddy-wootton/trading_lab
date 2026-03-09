@@ -1,25 +1,62 @@
-# Byte-compiled / optimized / DLL files
+# =========================
+# Python cache files
+# =========================
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
+*.pyd
 
-# Virtual Environments (where your packages live)
+# =========================
+# Virtual environments
+# =========================
+.venv/
 venv/
 env/
-ENV/
 
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
+# =========================
+# Environment variables
+# =========================
+.env
 
-# Unit test / coverage reports
-.pytest_cache/
-.coverage
+# =========================
+# VS Code
+# =========================
+.vscode/
 
-# OS generated files
+# =========================
+# OS files
+# =========================
 .DS_Store
 Thumbs.db
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Python build files
+# =========================
+build/
+dist/
+*.egg-info/
+
+# =========================
+# Testing / coverage
+# =========================
+.coverage
+htmlcov/
+
+# =========================
+# Temporary files
+# =========================
+*.tmp
+*.swp
 
 # Keep our AI agent memory synced
 !.agents/
