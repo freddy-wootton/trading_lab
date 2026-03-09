@@ -4,3 +4,5 @@ python -m pip install alpaca-py
 python -m pip install pandas
 python -m pip install python-dotenv
 python -m pip install pytz
+
+New command?: pip install -r requirements.txt
