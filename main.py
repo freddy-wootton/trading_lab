@@ -1,158 +1,134 @@
 """
-trading_lab - Starter Script
-Author: Freddy
-Description: Basic project structure for a trading bot / strategy lab
+Starter script for the Trading Lab with PyTorch and SQL integration.
 """
 
-import os
-import time
-import logging
+from __future__ import annotations
+
+# Core utilities
+import argparse
+import sys
 import pandas as pd
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
+import numpy as np
+from datetime import datetime
+from pathlib import Path
 
-from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest
-from alpaca.data.timeframe import TimeFrame
-
-
-# ==========================
-# LOAD ENVIRONMENT VARIABLES
-# ==========================
-load_dotenv()
-
-API_KEY = os.getenv("ALPACA_API_KEY")
-SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
-
-# ==========================
-# CONFIG
-# ==========================
-SYMBOL = "AAPL"
-FAST_MA = 10
-SLOW_MA = 30
-CHECK_INTERVAL = 60  # seconds
+# Project-specific modules
+from config import API_KEY, SECRET_KEY, DEFAULT_SYMBOL, FAST_MA, SLOW_MA
+from data import get_daily_bars
+from logger import log
+from ml_strategy import predict_signal
+from database import init_db, log_trade
+from execution import submit_order
+from portfolio import get_account_balance
+from risk import calculate_position_size
 
 
-# ==========================
-# CLIENT SETUP
-# ==========================
-trading_client = TradingClient(API_KEY, SECRET_KEY, paper=True)
-data_client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
+def parse_args() -> argparse.Namespace:
+    """
+    Parse command line arguments for symbol, lookback period, and dry-run mode.
+    """
+    parser = argparse.ArgumentParser(description="Run the ML-based trading algorithm.")
+    parser.add_argument("-s", "--symbol", default=DEFAULT_SYMBOL, help="Ticker to fetch data for.")
+    parser.add_argument("-d", "--days", type=int, default=60, help="Number of days of price history to load.")
+    parser.add_argument("--dry-run", action="store_true", help="Only summarize the signal, do not touch Alpaca trading APIs.")
+    return parser.parse_args()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+def ensure_api_keys() -> None:
+    """Check that Alpaca API keys are present in the environment."""
+    if not API_KEY or not SECRET_KEY:
+        log("API Keys missing. Please set ALPACA_API_KEY and ALPACA_SECRET_KEY in .env")
+        raise RuntimeError("Missing Alpaca API Keys.")
 
+def compute_mas(df, fast: int = FAST_MA, slow: int = SLOW_MA):
+    """
+    Compute Fast and Slow Moving Averages for the given dataframe.
+    These are logged to the database even if the ML model uses different features.
+    """
+    window = df.copy()
+    window["fast_ma"] = window["close"].rolling(fast).mean()
+    window["slow_ma"] = window["close"].rolling(slow).mean()
+    return window
 
-# ==========================
-# FUNCTIONS
-# ==========================
-
-def get_data(symbol):
-    end = datetime.utcnow()
-    start = end - timedelta(days=5)
-
-    request = StockBarsRequest(
-        symbol_or_symbols=symbol,
-        timeframe=TimeFrame.Minute,
-        start=start,
-        end=end
+def summarize(symbol: str, signal: str, latest: dict, prediction: float) -> None:
+    """Print and log a summary of the current stock snapshot and ML prediction."""
+    message = (
+        f"{symbol} snapshot: close={latest['close']:.2f} | "
+        f"prediction={prediction:.2f} | signal={signal}"
     )
+    log(message)
 
-    bars = data_client.get_stock_bars(request).df
+def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
+    """
+    The main execution flow for a single symbol:
+    1. Fetch data -> 2. Predict Signal -> 3. Log Result -> 4. Execute Trade (if not dry-run)
+    """
+    ensure_api_keys()
+    init_db()
+
+    # Step 1: Fetch and Prepare Data
+    try:
+        bars = get_daily_bars(symbol)
+    except Exception as exc:
+        log(f"Failed to fetch data for {symbol}: {exc}")
+        raise
 
     if bars.empty:
-        return None
+        raise RuntimeError(f"No data returned for {symbol}.")
 
-    df = bars.reset_index()
-    return df
+    # Reset and compute technical indicators for logging
+    history = bars.tail(days).reset_index()
+    history = compute_mas(history)
+    latest = history.iloc[-1]
+    
+    # Step 2: Generate Prediction using the LSTM Model
+    signal, prediction = predict_signal(history)
 
-
-def calculate_mas(df):
-    df["fast_ma"] = df["close"].rolling(FAST_MA).mean()
-    df["slow_ma"] = df["close"].rolling(SLOW_MA).mean()
-    return df
-
-
-def holding_position(symbol):
-    positions = trading_client.get_all_positions()
-    for p in positions:
-        if p.symbol == symbol:
-            return True
-    return False
-
-
-def place_order(symbol, qty, side):
-    order = MarketOrderRequest(
+    # Step 3: Summarize and Log to SQL
+    summarize(symbol, signal, latest, prediction)
+    
+    log_trade(
         symbol=symbol,
-        qty=qty,
-        side=side,
-        time_in_force=TimeInForce.DAY
+        signal=signal,
+        close_price=float(latest['close']),
+        fast_ma=float(latest['fast_ma']) if not hasattr(latest['fast_ma'], 'isna') or not latest['fast_ma'].isna() else None,
+        slow_ma=float(latest['slow_ma']) if not hasattr(latest['slow_ma'], 'isna') or not latest['slow_ma'].isna() else None,
+        prediction=prediction
     )
-    trading_client.submit_order(order)
-    logging.info(f"{side} order submitted for {qty} shares of {symbol}")
 
 
-# ==========================
-# MAIN LOOP
-# ==========================
+    if dry_run:
+        log("Dry run requested; no orders will be submitted.")
+        return
 
-logging.info("Bot started.")
+    # Execution phase: Submit orders based on signals
+    log(f"Executing trade for {symbol} based on signal: {signal}")
+    
+    if signal != "flat":
+        # Calculate dynamic position size based on account balance and current price
+        try:
+            balance = get_account_balance()
+            qty = calculate_position_size(balance, float(latest['close']))
+            log(f"Dynamic sizing: Balance=${balance:.2f} | Risk -> Qty={qty}")
+            
+            # Submit the actual order
+            submit_order(symbol, "buy" if signal == "long" else "sell", qty=qty)
+        except Exception as e:
+            log(f"Error during execution phase: {e}")
+    else:
+        log(f"No action taken for signal: {signal}")
 
-while True:
+    log("Execution phase complete.")
+
+
+
+def main() -> None:
+    args = parse_args()
+    run_snapshot(args.symbol.upper(), args.days, args.dry_run)
+
+if __name__ == "__main__":
     try:
-        clock = trading_client.get_clock()
-
-        if not clock.is_open:
-            logging.info("Market closed. Sleeping 5 minutes.")
-            time.sleep(300)
-            continue
-
-        logging.info("Fetching data...")
-        df = get_data(SYMBOL)
-
-        if df is None or len(df) < SLOW_MA:
-            logging.warning("Not enough data yet.")
-            time.sleep(CHECK_INTERVAL)
-            continue
-
-        df = calculate_mas(df)
-
-        latest = df.iloc[-1]
-        previous = df.iloc[-2]
-
-        logging.info(
-            f"Price: {latest['close']:.2f} | "
-            f"Fast MA: {latest['fast_ma']:.2f} | "
-            f"Slow MA: {latest['slow_ma']:.2f}"
-        )
-
-        # BUY SIGNAL
-        if previous["fast_ma"] < previous["slow_ma"] and latest["fast_ma"] > latest["slow_ma"]:
-            if not holding_position(SYMBOL):
-                logging.info("BUY signal detected.")
-                place_order(SYMBOL, 5, OrderSide.BUY)
-            else:
-                logging.info("Already holding. No buy.")
-
-        # SELL SIGNAL
-        elif previous["fast_ma"] > previous["slow_ma"] and latest["fast_ma"] < latest["slow_ma"]:
-            if holding_position(SYMBOL):
-                logging.info("SELL signal detected.")
-                place_order(SYMBOL, 5, OrderSide.SELL)
-            else:
-                logging.info("No position to sell.")
-
-        else:
-            logging.info("No signal.")
-
-        logging.info("Sleeping...\n")
-        time.sleep(CHECK_INTERVAL)
-
-    except Exception as e:
-        logging.error(f"Error: {e}")
-        time.sleep(60)
+        main()
+    except Exception as exc:
+        log(f"Starter script terminated with error: {exc}")
+        print(f"Starter script failed: {exc}")
+        sys.exit(1)
