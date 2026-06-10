@@ -16,7 +16,7 @@ from pathlib import Path
 from config import API_KEY, SECRET_KEY, DEFAULT_SYMBOL, FAST_MA, SLOW_MA
 from data import get_daily_bars
 from logger import log
-from ml_strategy import predict_signal
+from ml_strategy import predict_signal, LSTMPricePredictor, load_model
 from database import init_db, log_trade
 from execution import submit_order
 from portfolio import get_account_balance
@@ -81,17 +81,25 @@ def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
     latest = history.iloc[-1]
     
     # Step 2: Generate Prediction using the LSTM Model
-    signal, prediction = predict_signal(history)
+    # Load the model once here so predict_signal doesn't reload it on every call
+    device = __import__('torch').device('cuda' if __import__('torch').cuda.is_available() else 'cpu')
+    model = LSTMPricePredictor(input_size=10).to(device)
+    load_model(model)
+    signal, prediction = predict_signal(history, model=model)
 
     # Step 3: Summarize and Log to SQL
     summarize(symbol, signal, latest, prediction)
-    
+
+    # Clean, pandas-idiomatic NaN checks for moving averages
+    fast_ma = None if pd.isna(latest['fast_ma']) else float(latest['fast_ma'])
+    slow_ma = None if pd.isna(latest['slow_ma']) else float(latest['slow_ma'])
+
     log_trade(
         symbol=symbol,
         signal=signal,
         close_price=float(latest['close']),
-        fast_ma=float(latest['fast_ma']) if not hasattr(latest['fast_ma'], 'isna') or not latest['fast_ma'].isna() else None,
-        slow_ma=float(latest['slow_ma']) if not hasattr(latest['slow_ma'], 'isna') or not latest['slow_ma'].isna() else None,
+        fast_ma=fast_ma,
+        slow_ma=slow_ma,
         prediction=prediction
     )
 
@@ -109,9 +117,12 @@ def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
             balance = get_account_balance()
             qty = calculate_position_size(balance, float(latest['close']))
             log(f"Dynamic sizing: Balance=${balance:.2f} | Risk -> Qty={qty}")
-            
-            # Submit the actual order
-            submit_order(symbol, "buy" if signal == "long" else "sell", qty=qty)
+
+            if qty == 0:
+                log("Position size too small for current balance, skipping trade.")
+            else:
+                # Submit the actual order
+                submit_order(symbol, "buy" if signal == "long" else "sell", qty=qty)
         except Exception as e:
             log(f"Error during execution phase: {e}")
     else:

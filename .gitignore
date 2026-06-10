@@ -47,6 +47,15 @@ dist/
 *.egg-info/
 
 # =========================
+# Trading Lab generated files
+# =========================
+*.pth
+trading_lab.db
+training_data.csv
+latest_prediction.png
+scaler.pkl
+
+# =========================
 # Testing / coverage
 # =========================
 .coverage

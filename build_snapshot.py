@@ -16,13 +16,9 @@ def build_exe():
         print(f"Error: {main_script} not found.")
         return
 
-    # Define the PyInstaller command
-    # --onefile: Bundle into a single executable
-    # --name: Name of the output file
-    # --hidden-import: Ensure dynamic dependencies are caught
-    # --collect-all: Bundles large packages correctly
+    # Define the PyInstaller command using sys.executable to ensure it uses the venv
     cmd = [
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--onefile",
         "--name", "TradingBot",
         "--hidden-import", "sqlalchemy.ext.declarative",
@@ -32,6 +28,7 @@ def build_exe():
         "--collect-all", "matplotlib",
         main_script
     ]
+
     
     print(f"Running command: {' '.join(cmd)}")
     

@@ -12,5 +12,6 @@ def calculate_position_size(account_balance, price, risk_percent=0.02):
     # Number of shares based on current price
     qty = int(position_value / price)
     
-    # Ensure at least 1 share is traded if within risk limits (or handle zero)
-    return max(qty, 1)
+    # If position value is less than the share price, qty will be 0.
+    # Return 0 to signal that the trade should be skipped — do NOT force 1 share.
+    return qty
