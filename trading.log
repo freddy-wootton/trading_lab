@@ -226,3 +226,4 @@ ImportError: cannot import name 'DEFAULT_SYMBOL' from 'config' (C:\Users\fredd\O
 [2026-06-11 12:06:47] --- Iteration 1 Starting ---
 [2026-06-11 12:07:00] Starter script terminated with error: No data returned for AAPL.
 [2026-06-11 12:07:01] Iteration 1 complete. Sleeping for 3600 seconds...
+[2026-06-11 11:50:29 UTC] Position size is 0 -- balance=$1000.00, price=$291.00, risk_budget=$20.00. Trade skipped.

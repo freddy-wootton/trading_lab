@@ -1,40 +1,52 @@
 """
-Execution layer: Submits trade orders to the Alpaca API.
+execution.py
+Submits market orders to Alpaca Paper Trading.
+
+Changes:
+  - TradingClient created once as a module-level singleton (not per call)
+  - TimeInForce changed from GTC to DAY (correct for equity market orders)
+  - Guards against qty <= 0
 """
+
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from config import API_KEY, SECRET_KEY
 from logger import log
 
+# Module-level singleton -- created once when this module is imported
+_client = TradingClient(API_KEY, SECRET_KEY, paper=True)
+
+
 def submit_order(symbol: str, side: str, qty: int = 1):
     """
-    Submits a market order to Alpaca Paper Trading.
-    'side' should be 'buy' or 'sell'.
-    Handles order construction and error reporting.
+    Submit a market order to Alpaca.
+
+    Args:
+        symbol: Ticker symbol, e.g. 'AAPL'
+        side:   'buy' or 'sell'
+        qty:    Number of whole shares (must be >= 1)
+
+    Returns:
+        The Alpaca order object, or None on failure.
     """
-    # Initialize the Trading Client (Paper trading is default for these keys/account)
-    client = TradingClient(API_KEY, SECRET_KEY, paper=True)
-    
-    # Map the requested side to Alpaca's OrderSide enum
+    if qty <= 0:
+        log(f"submit_order: qty={qty} -- skipping order for {symbol}")
+        return None
+
     order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
-    
-    log(f"Submitting {order_side} order for {qty} share(s) of {symbol}...")
-    
+    log(f"Submitting {order_side.value} order: {qty} x {symbol}")
+
     try:
-        # Prepare the market order request
         market_order_data = MarketOrderRequest(
             symbol=symbol,
             qty=qty,
             side=order_side,
-            time_in_force=TimeInForce.GTC # Good 'Til Cancelled
+            time_in_force=TimeInForce.DAY,   # DAY is correct for equity market orders
         )
-        
-        # Dispatch the order to Alpaca's servers
-        market_order = client.submit_order(order_data=market_order_data)
-        log(f"Order submitted successfully. Order ID: {market_order.id}")
-        return market_order
-    except Exception as e:
-        # Log any errors (e.g., market closed, insufficient funds)
-        log(f"Failed to submit order for {symbol}: {e}")
+        order = _client.submit_order(order_data=market_order_data)
+        log(f"Order accepted. ID: {order.id}")
+        return order
+    except Exception as exc:
+        log(f"Order failed for {symbol}: {exc}")
         return None

@@ -12,3 +12,4 @@ joblib
 schedule
 apscheduler
 pyinstaller
+tzdata>=2024.1
