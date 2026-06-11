@@ -7,7 +7,7 @@ import subprocess
 import argparse
 from logger import log
 
-def run_trading_loop(symbol="AAPL", interval_seconds=3600, iterations=None):
+def run_trading_loop(symbol="AAPL", interval_seconds=10, iterations=None):
     """
     Infinite loop that executes 'main.py' at regular intervals.
     """
