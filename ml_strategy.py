@@ -13,6 +13,7 @@ from config import SIGNAL_THRESHOLD
 from logger import log
 
 SCALER_PATH = "scaler.pkl"
+TARGET_SCALER_PATH = "target_scaler.pkl"
 
 
 class LSTMPricePredictor(nn.Module):
@@ -103,7 +104,7 @@ def train_model(data_path="training_data.csv", epochs=100, lr=0.001, seq_length=
 
     all_features = feature_cols + [f'lag_{j}' for j in range(1, 7)]
     raw_data = df[all_features].values.astype(np.float32)
-    labels = df['close'].values.astype(np.float32)
+    labels = df['close'].values.astype(np.float32).reshape(-1, 1)
 
     # Fit a MinMaxScaler on raw feature data and save it for use in predict_signal
     scaler = MinMaxScaler()
@@ -111,11 +112,16 @@ def train_model(data_path="training_data.csv", epochs=100, lr=0.001, seq_length=
     joblib.dump(scaler, SCALER_PATH)
     log(f"Feature scaler fitted and saved to {SCALER_PATH}")
 
+    target_scaler = MinMaxScaler()
+    target_data = target_scaler.fit_transform(labels)
+    joblib.dump(target_scaler, TARGET_SCALER_PATH)
+    log(f"Target scaler fitted and saved to {TARGET_SCALER_PATH}")
+
     # Create sequences: (Samples, Seq_Length, Features)
     X, y = [], []
     for i in range(len(data) - seq_length):
         X.append(data[i: i + seq_length])
-        y.append(labels[i + seq_length])
+        y.append(target_data[i + seq_length])
 
     X = torch.tensor(np.array(X)).float()
     y = torch.tensor(np.array(y)).float().view(-1, 1)
@@ -240,21 +246,45 @@ def predict_signal(df: pd.DataFrame, seq_length=10, model=None) -> tuple[str, fl
 
     model.eval()
     with torch.no_grad():
-        prediction_scalar = model(features_tensor).item()
+        raw_model_output = model(features_tensor).item()
 
     current_price = df['close'].iloc[-1]
 
+    scaled_prediction = raw_model_output
+    predicted_price = raw_model_output
+    if os.path.exists(TARGET_SCALER_PATH):
+        try:
+            target_scaler = joblib.load(TARGET_SCALER_PATH)
+            predicted_price = float(target_scaler.inverse_transform(np.array([[raw_model_output]], dtype=np.float32))[0][0])
+        except Exception as e:
+            log(
+                f"Warning: Failed to inverse-transform prediction from {TARGET_SCALER_PATH}: {e}. "
+                "Proceeding with raw model output."
+            )
+    else:
+        log(
+            f"Warning: Target scaler not found at {TARGET_SCALER_PATH}. "
+            "Proceeding with raw model output."
+        )
+
+    log(
+        f"Prediction scale check: raw_model_output={raw_model_output:.4f} | "
+        f"scaled_prediction={scaled_prediction:.4f} | "
+        f"inverse_transformed_prediction={predicted_price:.4f} | "
+        f"current_price={current_price:.4f}"
+    )
+
     # Signal logic based on the configured price prediction threshold.
     signal = "flat"
-    if prediction_scalar > current_price * (1 + SIGNAL_THRESHOLD):
+    if predicted_price > current_price * (1 + SIGNAL_THRESHOLD):
         signal = "long"
-    elif prediction_scalar < current_price * (1 - SIGNAL_THRESHOLD):
+    elif predicted_price < current_price * (1 - SIGNAL_THRESHOLD):
         signal = "short"
 
     # Generate the prediction chart (optional visualization)
-    plot_forecast(df, float(prediction_scalar))
+    plot_forecast(df, float(predicted_price))
 
-    return signal, float(prediction_scalar)
+    return signal, float(predicted_price)
 
 
 if __name__ == "__main__":

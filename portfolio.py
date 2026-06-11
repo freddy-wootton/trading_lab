@@ -1,7 +1,10 @@
 """
 Portfolio management: Interaction with Alpaca account and positions.
 """
+from __future__ import annotations
+
 from alpaca.trading.client import TradingClient
+from logger import log
 from config import API_KEY, SECRET_KEY
 
 # Initialize the Alpaca Trading Client (defaults to Paper if configured in config.py)
@@ -22,6 +25,7 @@ def get_position(symbol):
     try:
         position = trading_client.get_open_position(symbol)
         return int(position.qty)
-    except:
+    except Exception:
         # If no position is found, return 0
-        return 0
+        log(f"No open position found for {symbol}; treating position size as 0.")
+        return 0

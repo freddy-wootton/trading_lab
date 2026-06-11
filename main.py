@@ -19,7 +19,7 @@ from logger import log
 from ml_strategy import predict_signal, LSTMPricePredictor, load_model
 from database import init_db, log_trade
 from execution import submit_order
-from portfolio import get_account_balance
+from portfolio import get_account_balance, get_position
 from risk import calculate_position_size
 
 
@@ -111,22 +111,41 @@ def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
     # Execution phase: Submit orders based on signals
     log(f"Executing trade for {symbol} based on signal: {signal}")
     
-    if signal != "flat":
-        # Calculate dynamic position size based on account balance and current price
+    if signal == "flat":
+        log(f"No action taken for signal: {signal}")
+    else:
         try:
-            balance = get_account_balance()
-            qty = calculate_position_size(balance, float(latest['close']))
-            log(f"Dynamic sizing: Balance=${balance:.2f} | Risk -> Qty={qty}")
+            current_position_qty = get_position(symbol)
+            log(
+                f"Position check for {symbol}: current_position_qty={current_position_qty} | "
+                f"intended_action={signal}"
+            )
 
-            if qty == 0:
-                log("Position size too small for current balance, skipping trade.")
-            else:
-                # Submit the actual order
-                submit_order(symbol, "buy" if signal == "long" else "sell", qty=qty)
+            if signal == "long":
+                balance = get_account_balance()
+                qty = calculate_position_size(balance, float(latest['close']))
+                log(f"Dynamic sizing: Balance=${balance:.2f} | Risk -> Buy Qty={qty}")
+
+                if qty == 0:
+                    log("Position size too small for current balance, skipping buy.")
+                else:
+                    submit_order(symbol, "buy", qty=qty)
+
+            elif signal == "short":
+                if current_position_qty <= 0:
+                    log(
+                        f"Skipping sell for {symbol}: no shares owned and short selling is disabled."
+                    )
+                else:
+                    sell_qty = current_position_qty
+                    log(
+                        f"Selling owned shares for {symbol}: position_qty={current_position_qty} | "
+                        f"sell_qty={sell_qty}"
+                    )
+                    submit_order(symbol, "sell", qty=sell_qty)
+
         except Exception as e:
             log(f"Error during execution phase: {e}")
-    else:
-        log(f"No action taken for signal: {signal}")
 
     log("Execution phase complete.")
 
