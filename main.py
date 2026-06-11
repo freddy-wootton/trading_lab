@@ -13,8 +13,8 @@ from datetime import datetime
 from pathlib import Path
 
 # Project-specific modules
-from config import API_KEY, SECRET_KEY, DEFAULT_SYMBOL, FAST_MA, SLOW_MA
-from data import get_daily_bars
+from config import API_KEY, SECRET_KEY, DEFAULT_SYMBOL, FAST_MA, SLOW_MA, INTRADAY_LOOKBACK_BARS
+from data import get_intraday_bars
 from logger import log
 from ml_strategy import predict_signal, LSTMPricePredictor, load_model
 from database import init_db, log_trade
@@ -67,7 +67,7 @@ def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
 
     # Step 1: Fetch and Prepare Data
     try:
-        bars = get_daily_bars(symbol)
+        bars = get_intraday_bars(symbol, lookback_bars=INTRADAY_LOOKBACK_BARS)
     except Exception as exc:
         log(f"Failed to fetch data for {symbol}: {exc}")
         raise
@@ -76,7 +76,7 @@ def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
         raise RuntimeError(f"No data returned for {symbol}.")
 
     # Reset and compute technical indicators for logging
-    history = bars.tail(days).reset_index()
+    history = bars.tail(INTRADAY_LOOKBACK_BARS).reset_index()
     history = compute_mas(history)
     latest = history.iloc[-1]
     

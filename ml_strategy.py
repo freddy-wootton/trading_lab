@@ -9,6 +9,7 @@ import os
 import matplotlib.pyplot as plt
 import joblib
 from sklearn.preprocessing import MinMaxScaler
+from config import SIGNAL_THRESHOLD
 from logger import log
 
 SCALER_PATH = "scaler.pkl"
@@ -227,7 +228,7 @@ def predict_signal(df: pd.DataFrame, seq_length=10, model=None) -> tuple[str, fl
         log(f"Warning: Scaler not found at {SCALER_PATH}. Proceeding without scaling. Run train_model() to generate it.")
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    features_tensor = torch.tensor([latest_seq]).float().to(device)
+    features_tensor = torch.tensor(np.array([latest_seq])).float().to(device)
 
     # Use the provided model or fall back to loading from disk
     if model is None:
@@ -243,11 +244,11 @@ def predict_signal(df: pd.DataFrame, seq_length=10, model=None) -> tuple[str, fl
 
     current_price = df['close'].iloc[-1]
 
-    # Signal logic based on price prediction threshold (±0.5% band)
+    # Signal logic based on the configured price prediction threshold.
     signal = "flat"
-    if prediction_scalar > current_price * 1.005:
+    if prediction_scalar > current_price * (1 + SIGNAL_THRESHOLD):
         signal = "long"
-    elif prediction_scalar < current_price * 0.995:
+    elif prediction_scalar < current_price * (1 - SIGNAL_THRESHOLD):
         signal = "short"
 
     # Generate the prediction chart (optional visualization)
@@ -258,4 +259,4 @@ def predict_signal(df: pd.DataFrame, seq_length=10, model=None) -> tuple[str, fl
 
 if __name__ == "__main__":
     # Internal test for training
-    train_model()
+    train_model(data_path="training_data_intraday.csv", epochs=50)

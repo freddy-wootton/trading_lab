@@ -5,13 +5,20 @@ import pandas as pd
 import datetime
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
-from alpaca.data.timeframe import TimeFrame
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.data.enums import DataFeed
 from config import API_KEY, SECRET_KEY
 from logger import log
 
-# Initialize the Data Client
-client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
+_client = None
+
+
+def _get_client():
+    """Create the Alpaca data client only when training data is fetched."""
+    global _client
+    if _client is None:
+        _client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
+    return _client
 
 # Broad market symbols to build a diverse dataset (Top 30 Nasdaq 100)
 NASDAQ_SUBSYMBOLS = [
@@ -48,7 +55,7 @@ def fetch_training_data(symbols=None, days=365):
             )
             
             # Fetch and convert to DataFrame
-            bars = client.get_stock_bars(request_params)
+            bars = _get_client().get_stock_bars(request_params)
             df = bars.df
             
             if not df.empty:
@@ -72,7 +79,38 @@ def fetch_training_data(symbols=None, days=365):
     else:
         log("No data fetched. CSV not updated.")
 
+
+def download_intraday_training_data(symbol="AAPL", days=5):
+    """
+    Fetch recent 5-minute bars for one symbol and save them to training_data_intraday.csv.
+    A US trading day has about 78 five-minute candles, so 5 days is roughly 390 bars.
+    """
+    lookback_bars = days * 78
+    log(f"Fetching intraday training data for {symbol}: target={lookback_bars} bars")
+
+    end_date = datetime.datetime.now() - datetime.timedelta(minutes=16)
+    start_date = end_date - datetime.timedelta(days=days + 7)
+    request_params = StockBarsRequest(
+        symbol_or_symbols=symbol,
+        timeframe=TimeFrame(5, TimeFrameUnit.Minute),
+        start=start_date,
+        end=end_date,
+        limit=lookback_bars,
+        feed=DataFeed.IEX,
+    )
+
+    bars = _get_client().get_stock_bars(request_params)
+    df = bars.df
+
+    if df.empty:
+        log(f"No intraday bars fetched for {symbol}. CSV not updated.")
+        return
+
+    df = df.tail(lookback_bars).copy()
+    df.reset_index(inplace=True)
+    df.to_csv("training_data_intraday.csv", index=False)
+    log(f"Saved training_data_intraday.csv with {len(df)} bars for {symbol}")
+
 if __name__ == "__main__":
     # Fetch data for the full list defined above
     fetch_training_data()
-
