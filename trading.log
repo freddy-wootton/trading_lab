@@ -188,3 +188,41 @@ ImportError: cannot import name 'DEFAULT_SYMBOL' from 'config' (C:\Users\fredd\O
 [2026-06-11 01:34:39] AAPL snapshot: close=291.48 | prediction=0.00 | signal=none
 [2026-06-11 01:34:39] Dry run requested; no orders will be submitted.
 [2026-06-11 01:34:40] Iteration 1 complete. Sleeping for 3600 seconds...
+[2026-06-11 01:35:52] Starting continuous trading loop for AAPL (Interval: 3600s)
+[2026-06-11 01:35:52] --- Iteration 1 Starting ---
+[2026-06-11 01:35:57] Model loaded from model_lstm.pth
+[2026-06-11 01:35:57] AAPL snapshot: close=291.48 | prediction=0.00 | signal=none
+[2026-06-11 01:35:57] Dry run requested; no orders will be submitted.
+[2026-06-11 01:35:58] Iteration 1 complete. Sleeping for 3600 seconds...
+[2026-06-11 02:35:58] --- Iteration 2 Starting ---
+[2026-06-11 02:36:13] Model loaded from model_lstm.pth
+[2026-06-11 02:36:13] AAPL snapshot: close=291.48 | prediction=0.00 | signal=none
+[2026-06-11 02:36:13] Dry run requested; no orders will be submitted.
+[2026-06-11 02:36:14] Iteration 2 complete. Sleeping for 3600 seconds...
+[2026-06-11 03:36:15] --- Iteration 3 Starting ---
+[2026-06-11 03:36:20] Model loaded from model_lstm.pth
+[2026-06-11 03:36:20] AAPL snapshot: close=291.48 | prediction=0.00 | signal=none
+[2026-06-11 03:36:20] Dry run requested; no orders will be submitted.
+[2026-06-11 03:36:20] Iteration 3 complete. Sleeping for 3600 seconds...
+[2026-06-11 04:36:21] --- Iteration 4 Starting ---
+[2026-06-11 04:36:25] Model loaded from model_lstm.pth
+[2026-06-11 04:36:25] AAPL snapshot: close=291.48 | prediction=0.00 | signal=none
+[2026-06-11 04:36:25] Dry run requested; no orders will be submitted.
+[2026-06-11 04:36:26] Iteration 4 complete. Sleeping for 3600 seconds...
+[2026-06-11 05:36:26] --- Iteration 5 Starting ---
+[2026-06-11 05:36:31] Starter script terminated with error: No data returned for AAPL.
+[2026-06-11 05:36:32] Iteration 5 complete. Sleeping for 3600 seconds...
+[2026-06-11 06:36:32] --- Iteration 6 Starting ---
+[2026-06-11 06:36:37] Starter script terminated with error: No data returned for AAPL.
+[2026-06-11 06:36:38] Iteration 6 complete. Sleeping for 3600 seconds...
+[2026-06-11 07:36:38] --- Iteration 7 Starting ---
+[2026-06-11 07:36:45] Starter script terminated with error: No data returned for AAPL.
+[2026-06-11 07:36:46] Iteration 7 complete. Sleeping for 3600 seconds...
+[2026-06-11 11:07:18] Starting continuous trading loop for AAPL (Interval: 3600s)
+[2026-06-11 11:07:18] --- Iteration 1 Starting ---
+[2026-06-11 11:07:35] Starter script terminated with error: No data returned for AAPL.
+[2026-06-11 11:07:36] Iteration 1 complete. Sleeping for 3600 seconds...
+[2026-06-11 12:06:47] Starting continuous trading loop for AAPL (Interval: 3600s)
+[2026-06-11 12:06:47] --- Iteration 1 Starting ---
+[2026-06-11 12:07:00] Starter script terminated with error: No data returned for AAPL.
+[2026-06-11 12:07:01] Iteration 1 complete. Sleeping for 3600 seconds...
