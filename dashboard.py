@@ -176,10 +176,11 @@ if not metrics["equity_curve"].empty:
     fig_eq.update_layout(
         plot_bgcolor="#151823",
         paper_bgcolor="#151823",
+        height=500,
         margin=dict(t=40, b=20),
     )
     fig_eq.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.4)
-    st.plotly_chart(fig_eq, width=True)
+    st.plotly_chart(fig_eq, use_container_width=True)
 else:
     st.info("No trade data yet — equity curve will appear once trades with P&L are logged.")
 
@@ -204,11 +205,12 @@ if not trades.empty and "pnl" in trades.columns:
     fig_bar.update_layout(
         plot_bgcolor="#151823",
         paper_bgcolor="#151823",
+        height=420,
         margin=dict(t=40, b=20),
         showlegend=False,
     )
     fig_bar.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
-    st.plotly_chart(fig_bar, width=True)
+    st.plotly_chart(fig_bar, use_container_width=True)
 else:
     st.info("No P&L data available yet.")
 
@@ -249,9 +251,10 @@ if predictions_df is not None and not predictions_df.empty:
             template="plotly_dark",
             plot_bgcolor="#151823",
             paper_bgcolor="#151823",
+            height=500,
             margin=dict(t=40, b=20),
         )
-        st.plotly_chart(fig_pred, width=True)
+        st.plotly_chart(fig_pred, use_container_width=True)
     else:
         st.info("No predictions found for the selected symbol / date range.")
 else:
@@ -271,7 +274,7 @@ if not trades.empty:
         if c in trades.columns
     ]
     recent = trades.sort_values("timestamp", ascending=False).head(20)[cols_to_show]
-    st.dataframe(recent, width=True)
+    st.dataframe(recent, use_container_width=True, height=500)
 else:
     st.info("No trades logged yet.")
 
