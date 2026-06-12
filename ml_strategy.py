@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import joblib
 from sklearn.preprocessing import MinMaxScaler
 from config import SIGNAL_THRESHOLD
+from database import log_model_checkpoint, log_prediction
 from logger import log
 
 SCALER_PATH = "scaler.pkl"
@@ -148,16 +149,30 @@ def train_model(data_path="training_data.csv", epochs=100, lr=0.001, seq_length=
         loss = criterion(outputs, y_train)
         loss.backward()
         optimizer.step()
+        final_train_loss = loss.item()
 
         if (epoch + 1) % 10 == 0:
             model.eval()
             with torch.no_grad():
                 val_loss = criterion(model(X_val), y_val).item()
             log(f"Epoch [{epoch+1}/{epochs}], Train Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}")
-            final_train_loss = loss.item()
             final_val_loss = val_loss
 
     save_model(model)
+    if len(X_val) > 0:
+        model.eval()
+        with torch.no_grad():
+            final_val_loss = criterion(model(X_val), y_val).item()
+
+    try:
+        log_model_checkpoint(epoch=epochs, train_loss=final_train_loss, val_loss=final_val_loss)
+        log(
+            f"Checkpoint logged: epoch={epochs}, train_loss={final_train_loss:.4f}, "
+            f"val_loss={final_val_loss:.4f}"
+        )
+    except Exception as exc:
+        log(f"Failed to log model checkpoint: {exc}")
+
     return model, (final_train_loss, final_val_loss)
 
 
@@ -193,7 +208,7 @@ def plot_forecast(df, prediction, symbol="Stock"):
         log(f"Failed to generate plot: {e}")
 
 
-def predict_signal(df: pd.DataFrame, seq_length=10, model=None) -> tuple[str, float]:
+def predict_signal(df: pd.DataFrame, symbol: str = "UNKNOWN", seq_length=10, model=None) -> tuple[str, float]:
     """
     Generates a trading signal for the latest data point using the trained LSTM.
     Prepares a sequence of the last 'seq_length' points for inference.
@@ -284,9 +299,20 @@ def predict_signal(df: pd.DataFrame, seq_length=10, model=None) -> tuple[str, fl
     # Generate the prediction chart (optional visualization)
     plot_forecast(df, float(predicted_price))
 
+    try:
+        log_prediction(
+            symbol=symbol,
+            close_price=float(current_price),
+            predicted_price=float(predicted_price),
+            signal=signal,
+        )
+    except Exception as exc:
+        log(f"Failed to log prediction for {symbol}: {exc}")
+
     return signal, float(predicted_price)
 
 
 if __name__ == "__main__":
-    # Internal test for training
+    log("Starting LSTM model training...")
     train_model(data_path="training_data_intraday.csv", epochs=50)
+    log("Model training complete.")
