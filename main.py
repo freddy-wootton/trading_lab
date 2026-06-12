@@ -17,7 +17,7 @@ from config import API_KEY, SECRET_KEY, DEFAULT_SYMBOL, FAST_MA, SLOW_MA, INTRAD
 from data import get_intraday_bars
 from logger import log
 from ml_strategy import predict_signal, LSTMPricePredictor, load_model
-from database import init_db, log_trade
+from database import init_db, log_prediction, log_trade
 from execution import submit_order
 from portfolio import get_account_balance, get_position
 from risk import calculate_position_size
@@ -93,6 +93,13 @@ def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
     # Clean, pandas-idiomatic NaN checks for moving averages
     fast_ma = None if pd.isna(latest['fast_ma']) else float(latest['fast_ma'])
     slow_ma = None if pd.isna(latest['slow_ma']) else float(latest['slow_ma'])
+
+    log_prediction(
+        symbol=symbol,
+        close_price=float(latest['close']),
+        predicted_price=prediction,
+        signal=signal
+    )
 
     log_trade(
         symbol=symbol,

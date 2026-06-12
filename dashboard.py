@@ -120,6 +120,9 @@ predictions_df = get_all_predictions()
 
 metrics = compute_metrics(trades)
 
+st.write(f"**Trades in database: {len(trades)}**")
+st.write(f"**Predictions in database: {len(predictions_df)}**")
+
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------

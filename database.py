@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import sqlite3
 from pathlib import Path
 
 import pandas as pd
@@ -193,56 +194,52 @@ def log_model_checkpoint(epoch: int, train_loss: float, val_loss: float) -> Mode
 # ---------------------------------------------------------------------------
 
 def get_all_trades() -> pd.DataFrame:
-    """Return all trade records as a pandas DataFrame."""
-    db = SessionLocal()
+    """Fetch all trades from trade_results table."""
     try:
-        rows = db.query(TradeResult).order_by(TradeResult.timestamp).all()
-        if not rows:
+        query = """
+        SELECT id, timestamp, symbol, side, signal, entry_price, exit_price, 
+               qty, pnl, ml_prediction, fast_ma, slow_ma, rsi 
+        FROM trade_results 
+        ORDER BY timestamp DESC
+        """
+        conn = sqlite3.connect("trading_lab.db")
+        try:
+            df = pd.read_sql(query, conn)
+        finally:
+            conn.close()
+
+        if df.empty:
             return pd.DataFrame()
-        data = [
-            {
-                "id": r.id,
-                "timestamp": r.timestamp,
-                "symbol": r.symbol,
-                "side": r.side,
-                "signal": r.signal,
-                "entry_price": r.entry_price,
-                "exit_price": r.exit_price,
-                "qty": r.qty,
-                "pnl": r.pnl,
-                "ml_prediction": r.ml_prediction,
-                "fast_ma": r.fast_ma,
-                "slow_ma": r.slow_ma,
-                "rsi": r.rsi,
-            }
-            for r in rows
-        ]
-        return pd.DataFrame(data)
-    finally:
-        db.close()
+
+        return df
+    except Exception as exc:
+        from logger import log
+        log(f"Failed to fetch trades: {exc}")
+        return pd.DataFrame()
 
 
 def get_all_predictions() -> pd.DataFrame:
-    """Return all prediction records as a pandas DataFrame."""
-    db = SessionLocal()
+    """Fetch all predictions from predictions table."""
     try:
-        rows = db.query(Prediction).order_by(Prediction.timestamp).all()
-        if not rows:
+        query = """
+        SELECT id, timestamp, symbol, close_price, predicted_price, signal 
+        FROM predictions 
+        ORDER BY timestamp DESC
+        """
+        conn = sqlite3.connect("trading_lab.db")
+        try:
+            df = pd.read_sql(query, conn)
+        finally:
+            conn.close()
+
+        if df.empty:
             return pd.DataFrame()
-        data = [
-            {
-                "id": r.id,
-                "timestamp": r.timestamp,
-                "symbol": r.symbol,
-                "close_price": r.close_price,
-                "predicted_price": r.predicted_price,
-                "signal": r.signal,
-            }
-            for r in rows
-        ]
-        return pd.DataFrame(data)
-    finally:
-        db.close()
+
+        return df
+    except Exception as exc:
+        from logger import log
+        log(f"Failed to fetch predictions: {exc}")
+        return pd.DataFrame()
 
 
 def export_trades_to_csv(filename: str = "trades_export.csv") -> Path:
