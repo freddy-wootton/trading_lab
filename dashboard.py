@@ -63,6 +63,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+def _normalize_timestamp_series(series: pd.Series) -> pd.Series:
+    """Return a timezone-naive datetime series suitable for filtering and display."""
+    timestamps = pd.to_datetime(series, errors="coerce", utc=True)
+    return timestamps.dt.tz_convert(None)
+
+
 # ---------------------------------------------------------------------------
 # Sidebar controls
 # ---------------------------------------------------------------------------
@@ -78,16 +85,15 @@ with st.sidebar:
     )
     symbol_filter = st.multiselect("Symbol", options=all_symbols, default=all_symbols)
 
-    date_min = (
-        trades_raw["timestamp"].min().date()
-        if not trades_raw.empty and "timestamp" in trades_raw.columns
-        else pd.Timestamp("2020-01-01").date()
-    )
-    date_max = (
-        trades_raw["timestamp"].max().date()
-        if not trades_raw.empty and "timestamp" in trades_raw.columns
-        else pd.Timestamp.today().date()
-    )
+    if not trades_raw.empty and "timestamp" in trades_raw.columns:
+        timestamps = _normalize_timestamp_series(trades_raw["timestamp"])
+        valid_timestamps = timestamps.dropna()
+        date_min = valid_timestamps.min().date() if not valid_timestamps.empty else pd.Timestamp("2020-01-01").date()
+        date_max = valid_timestamps.max().date() if not valid_timestamps.empty else pd.Timestamp.today().date()
+    else:
+        date_min = pd.Timestamp("2020-01-01").date()
+        date_max = pd.Timestamp.today().date()
+
     date_range = st.date_input("Date Range", value=(date_min, date_max))
 
     st.markdown("---")
@@ -102,7 +108,7 @@ def load_and_filter_trades() -> pd.DataFrame:
         return df
 
     if "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df["timestamp"] = _normalize_timestamp_series(df["timestamp"])
 
     if symbol_filter:
         df = df[df["symbol"].isin(symbol_filter)]
