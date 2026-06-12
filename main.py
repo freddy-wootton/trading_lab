@@ -17,7 +17,7 @@ from config import API_KEY, SECRET_KEY, DEFAULT_SYMBOL, FAST_MA, SLOW_MA, INTRAD
 from data import get_intraday_bars
 from logger import log
 from ml_strategy import predict_signal, LSTMPricePredictor, load_model
-from database import init_db, log_trade
+from database import close_trade, init_db, log_trade
 from execution import submit_order
 from portfolio import get_account_balance, get_position
 from risk import calculate_position_size
@@ -94,16 +94,6 @@ def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
     fast_ma = None if pd.isna(latest['fast_ma']) else float(latest['fast_ma'])
     slow_ma = None if pd.isna(latest['slow_ma']) else float(latest['slow_ma'])
 
-    log_trade(
-        symbol=symbol,
-        signal=signal,
-        close_price=float(latest['close']),
-        fast_ma=fast_ma,
-        slow_ma=slow_ma,
-        prediction=prediction
-    )
-
-
     if dry_run:
         log("Dry run requested; no orders will be submitted.")
         return
@@ -116,20 +106,51 @@ def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
     else:
         try:
             current_position_qty = get_position(symbol)
+            current_price = float(latest['close'])
             log(
                 f"Position check for {symbol}: current_position_qty={current_position_qty} | "
                 f"intended_action={signal}"
             )
 
             if signal == "long":
-                balance = get_account_balance()
-                qty = calculate_position_size(balance, float(latest['close']))
-                log(f"Dynamic sizing: Balance=${balance:.2f} | Risk -> Buy Qty={qty}")
+                can_open_long = True
+                if current_position_qty < 0:
+                    cover_qty = abs(current_position_qty)
+                    log(f"Closing short position for {symbol} at {current_price:.2f} | cover_qty={cover_qty}")
+                    close_order = submit_order(symbol, "buy", qty=cover_qty)
+                    if close_order:
+                        closed = close_trade(symbol, current_price)
+                        if closed:
+                            log(
+                                f"Trade closed: entry={closed.entry_price} | exit={closed.exit_price} | "
+                                f"pnl={closed.pnl:.2f}"
+                            )
+                        else:
+                            log(f"No open short trade record found to close for {symbol}.")
+                    else:
+                        log(f"Failed to submit cover order for {symbol}; short position left open.")
+                        can_open_long = False
 
-                if qty == 0:
-                    log("Position size too small for current balance, skipping buy.")
-                else:
-                    submit_order(symbol, "buy", qty=qty)
+                if can_open_long:
+                    balance = get_account_balance()
+                    qty = calculate_position_size(balance, current_price)
+                    log(f"Dynamic sizing: Balance=${balance:.2f} | Risk -> Buy Qty={qty}")
+
+                    if qty == 0:
+                        log("Position size too small for current balance, skipping buy.")
+                    else:
+                        buy_order = submit_order(symbol, "buy", qty=qty)
+                        if buy_order:
+                            log_trade(
+                                symbol=symbol,
+                                signal="long",
+                                close_price=current_price,
+                                fast_ma=fast_ma,
+                                slow_ma=slow_ma,
+                                prediction=prediction,
+                                side="buy",
+                                qty=qty,
+                            )
 
             elif signal == "short":
                 if current_position_qty <= 0:
@@ -142,7 +163,18 @@ def run_snapshot(symbol: str, days: int, dry_run: bool) -> None:
                         f"Selling owned shares for {symbol}: position_qty={current_position_qty} | "
                         f"sell_qty={sell_qty}"
                     )
-                    submit_order(symbol, "sell", qty=sell_qty)
+                    sell_order = submit_order(symbol, "sell", qty=sell_qty)
+                    if sell_order:
+                        closed = close_trade(symbol, current_price)
+                        if closed:
+                            log(
+                                f"Trade closed: entry={closed.entry_price} | exit={closed.exit_price} | "
+                                f"pnl={closed.pnl:.2f}"
+                            )
+                        else:
+                            log(f"No open long trade record found to close for {symbol}.")
+                    else:
+                        log(f"Failed to submit sell order for {symbol}; long position left open.")
 
         except Exception as e:
             log(f"Error during execution phase: {e}")

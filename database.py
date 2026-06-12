@@ -189,6 +189,47 @@ def log_model_checkpoint(epoch: int, train_loss: float, val_loss: float) -> Mode
         db.close()
 
 
+def close_trade(symbol: str, exit_price: float) -> TradeResult | None:
+    """
+    Find the most recent open trade for the symbol, calculate P&L, and mark it closed.
+
+    Returns the updated TradeResult record, or None if no open trade is found.
+    """
+    db = SessionLocal()
+    try:
+        open_trade = (
+            db.query(TradeResult)
+            .filter(
+                TradeResult.symbol == symbol,
+                TradeResult.pnl.is_(None),
+                TradeResult.qty.isnot(None),
+            )
+            .order_by(TradeResult.timestamp.desc())
+            .first()
+        )
+
+        if not open_trade:
+            return None
+
+        entry = float(open_trade.entry_price or 0.0)
+        qty = int(open_trade.qty or 1)
+
+        if open_trade.signal == "long":
+            pnl = (exit_price - entry) * qty
+        elif open_trade.signal == "short":
+            pnl = (entry - exit_price) * qty
+        else:
+            pnl = 0.0
+
+        open_trade.exit_price = exit_price
+        open_trade.pnl = pnl
+        db.commit()
+        db.refresh(open_trade)
+        return open_trade
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Query helpers
 # ---------------------------------------------------------------------------

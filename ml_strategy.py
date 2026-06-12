@@ -74,6 +74,24 @@ def load_model(model, path="model_lstm.pth"):
     return False
 
 
+def _prepare_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """Engineer features on a single-symbol frame without crossing symbol boundaries."""
+    frame = frame.copy()
+    if "timestamp" in frame.columns:
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+        frame = frame.sort_values("timestamp")
+
+    frame["rsi"] = compute_rsi(frame["close"])
+    frame["sma_10"] = frame["close"].rolling(10).mean()
+    frame["sma_30"] = frame["close"].rolling(30).mean()
+
+    for j in range(1, 7):
+        frame[f"lag_{j}"] = frame["close"].shift(j)
+
+    frame.dropna(inplace=True)
+    return frame
+
+
 def train_model(data_path="training_data.csv", epochs=100, lr=0.001, seq_length=10):
     """
     Trains the LSTM model using historical data.
@@ -89,23 +107,27 @@ def train_model(data_path="training_data.csv", epochs=100, lr=0.001, seq_length=
         log("Training data is empty!")
         return None
 
-    # Feature engineering: Add RSI and Moving Averages
-    df['rsi'] = compute_rsi(df['close'])
-    df['sma_10'] = df['close'].rolling(10).mean()
-    df['sma_30'] = df['close'].rolling(30).mean()
-    df.dropna(inplace=True)
+    feature_cols = ["close", "rsi", "sma_10", "sma_30"]
+    all_features = feature_cols + [f"lag_{j}" for j in range(1, 7)]
 
-    # Prepare features (10 total)
-    feature_cols = ['close', 'rsi', 'sma_10', 'sma_30']
+    engineered_frames = []
+    if "symbol" in df.columns:
+        for symbol, group in df.groupby("symbol", sort=False):
+            prepared = _prepare_training_frame(group)
+            if not prepared.empty:
+                engineered_frames.append(prepared)
+    else:
+        prepared = _prepare_training_frame(df)
+        if not prepared.empty:
+            engineered_frames.append(prepared)
 
-    # Add 6 lagged closing prices as additional features
-    for j in range(1, 7):
-        df[f'lag_{j}'] = df['close'].shift(j)
-    df.dropna(inplace=True)
+    if not engineered_frames:
+        log("Training data is empty after feature engineering!")
+        return None
 
-    all_features = feature_cols + [f'lag_{j}' for j in range(1, 7)]
-    raw_data = df[all_features].values.astype(np.float32)
-    labels = df['close'].values.astype(np.float32).reshape(-1, 1)
+    combined_df = pd.concat(engineered_frames, ignore_index=True)
+    raw_data = combined_df[all_features].values.astype(np.float32)
+    labels = combined_df["close"].values.astype(np.float32).reshape(-1, 1)
 
     # Fit a MinMaxScaler on raw feature data and save it for use in predict_signal
     scaler = MinMaxScaler()
@@ -120,9 +142,20 @@ def train_model(data_path="training_data.csv", epochs=100, lr=0.001, seq_length=
 
     # Create sequences: (Samples, Seq_Length, Features)
     X, y = [], []
-    for i in range(len(data) - seq_length):
-        X.append(data[i: i + seq_length])
-        y.append(target_data[i + seq_length])
+    for frame in engineered_frames:
+        frame_data = scaler.transform(frame[all_features].values.astype(np.float32))
+        frame_targets = target_scaler.transform(frame["close"].values.astype(np.float32).reshape(-1, 1))
+
+        if len(frame_data) <= seq_length:
+            continue
+
+        for i in range(len(frame_data) - seq_length):
+            X.append(frame_data[i: i + seq_length])
+            y.append(frame_targets[i + seq_length])
+
+    if not X:
+        log("Training data did not produce any sequences. Check the input CSV and seq_length.")
+        return None
 
     X = torch.tensor(np.array(X)).float()
     y = torch.tensor(np.array(y)).float().view(-1, 1)
